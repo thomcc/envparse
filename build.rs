@@ -1,6 +1,5 @@
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    // 1.48 is MSRV
     let version = rustc_version().unwrap_or(48);
     if version < 57 {
         println!("cargo:rustc-cfg=envparse_no_const_panic");
