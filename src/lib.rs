@@ -89,7 +89,7 @@
 
 #![no_std]
 
-pub mod parse;
+mod parse;
 
 /// Not part of the public API. Please do not use.
 #[doc(hidden)]
