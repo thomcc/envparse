@@ -49,7 +49,7 @@
 //! First, a default value can beprovide
 //!
 //! ```
-//! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize = 32);
+//! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
 //!
 //! struct Thing {
 //!     len: [u8; MAX_LEN],
@@ -93,94 +93,119 @@ mod parse;
 
 /// Not part of the public API. Please do not use.
 #[doc(hidden)]
-pub mod __internals {
-    #[doc(hidden)]
+pub mod __priv {
+    // Export stuff we need from the macro.
     pub use core;
+    pub use core::option::Option::{self, None, Some};
     pub mod parse_dispatch {
-        use crate::parse::{parse_signed, parse_unsigned};
+        use crate::parse::{parse_signed, parse_unsigned, ParseError::Empty};
 
         // unsigned
-        pub const fn usize(s: &[u8]) -> Option<usize> {
+        pub const fn usize(s: &[u8], default: Option<usize>) -> Option<usize> {
             match parse_unsigned(s, None, Some(usize::MAX as u128)) {
                 Ok(v) => Some(v as usize),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn u8(s: &[u8]) -> Option<u8> {
+        pub const fn u8(s: &[u8], default: Option<u8>) -> Option<u8> {
             match parse_unsigned(s, None, Some(u8::MAX as u128)) {
                 Ok(v) => Some(v as u8),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn u16(s: &[u8]) -> Option<u16> {
+        pub const fn u16(s: &[u8], default: Option<u16>) -> Option<u16> {
             match parse_unsigned(s, None, Some(u16::MAX as u128)) {
                 Ok(v) => Some(v as u16),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn u32(s: &[u8]) -> Option<u32> {
+        pub const fn u32(s: &[u8], default: Option<u32>) -> Option<u32> {
             match parse_unsigned(s, None, Some(u32::MAX as u128)) {
                 Ok(v) => Some(v as u32),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn u64(s: &[u8]) -> Option<u64> {
+        pub const fn u64(s: &[u8], default: Option<u64>) -> Option<u64> {
             match parse_unsigned(s, None, Some(u64::MAX as u128)) {
                 Ok(v) => Some(v as u64),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn u128(s: &[u8]) -> Option<u128> {
+        pub const fn u128(s: &[u8], default: Option<u128>) -> Option<u128> {
             match parse_unsigned(s, None, None) {
                 Ok(v) => Some(v),
+                Err(Empty) => default,
                 _ => None,
             }
         }
 
         // signed
-        pub const fn isize(s: &[u8]) -> Option<isize> {
+        pub const fn isize(s: &[u8], default: Option<isize>) -> Option<isize> {
             match parse_signed(s, Some(isize::MIN as i128), Some(isize::MAX as i128)) {
                 Ok(v) => Some(v as isize),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn i8(s: &[u8]) -> Option<i8> {
+        pub const fn i8(s: &[u8], default: Option<i8>) -> Option<i8> {
             match parse_signed(s, Some(i8::MIN as i128), Some(i8::MAX as i128)) {
                 Ok(v) => Some(v as i8),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn i16(s: &[u8]) -> Option<i16> {
+        pub const fn i16(s: &[u8], default: Option<i16>) -> Option<i16> {
             match parse_signed(s, Some(i16::MIN as i128), Some(i16::MAX as i128)) {
                 Ok(v) => Some(v as i16),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn i32(s: &[u8]) -> Option<i32> {
+        pub const fn i32(s: &[u8], default: Option<i32>) -> Option<i32> {
             match parse_signed(s, Some(i32::MIN as i128), Some(i32::MAX as i128)) {
                 Ok(v) => Some(v as i32),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn i64(s: &[u8]) -> Option<i64> {
+        pub const fn i64(s: &[u8], default: Option<i64>) -> Option<i64> {
             match parse_signed(s, Some(i64::MIN as i128), Some(i64::MAX as i128)) {
                 Ok(v) => Some(v as i64),
+                Err(Empty) => default,
                 _ => None,
             }
         }
-        pub const fn i128(s: &[u8]) -> Option<i128> {
+        pub const fn i128(s: &[u8], default: Option<i128>) -> Option<i128> {
             match parse_signed(s, None, None) {
                 Ok(v) => Some(v),
+                Err(Empty) => default,
                 _ => None,
             }
         }
+        // Other things
+        pub const fn bool(s: &[u8], default: Option<bool>) -> Option<bool> {
+            match crate::parse::parse_bool(s) {
+                Ok(v) => Some(v),
+                Err(Empty) => default,
+                _ => None,
+            }
+        }
+        //
+        // pub const fn char(s: &[u8]) -> Option<char> {
+        //     crate::parse::parse_char(s)
+        // }
     }
 }
 
 /// Here's an example
 /// ```
 /// use envparse::parse_env;
-/// const MAX_LEN: usize = parse_env!("MYCRATE_MAX_THING_LEN" as usize = 64);
+/// const MAX_LEN: usize = parse_env!("MYCRATE_MAX_THING_LEN" as usize else 64);
 /// struct Thing {
 ///     len: [u8; MAX_LEN],
 /// }
@@ -196,39 +221,52 @@ pub mod __internals {
 /// ```
 #[macro_export]
 macro_rules! parse_env {
-    ($var_name:literal as $num_ty:ident) => {{
-        const __VALUE: $num_ty = match $crate::__internals::parse_dispatch::$num_ty(
-            $crate::__internals::core::env!($var_name).as_bytes(),
+    ($var_name:literal as $typ:ident) => {{
+        // The way we make this work without traits is we just look inside
+        // `__priv::parse_dispatch` for a function with the same name as the
+        // type they provided to the macro. Not very extensible, but doesn't
+        // require const traits (which feel like they're a jillion years away).
+        //
+        // Also note that items like `const` don't have hygene, so we pick a
+        // name for this intermediate constant that's unlikely to collide with
+        // identifiers in the user's program (even if they're wrapping our macro
+        // in another macro, they shouldn't use the `__ENVPARSE_` prefix. And if
+        // they do, I don't care about breaking them).
+        const __ENVPARSE_VALUE: $typ = match $crate::__priv::parse_dispatch::$typ(
+            $crate::__priv::core::env!($var_name).as_bytes(),
+            $crate::__priv::None,
         ) {
-            $crate::__internals::core::option::Option::Some(v) => v,
-            $crate::__internals::core::option::Option::None => {
-                $crate::__internals::core::panic!($crate::__internals::core::concat!(
+            $crate::__priv::Some(v) => v,
+            $crate::__priv::None => {
+                $crate::__priv::core::panic!($crate::__priv::core::concat!(
                     "error: the value in ",
-                    $crate::__internals::core::stringify!($s),
+                    $crate::__priv::core::stringify!($s),
                     " doesn't parse as a number, or is out of range for `",
-                    $crate::__internals::core::stringify!($num_ty),
+                    $crate::__priv::core::stringify!($typ),
                     "`.",
                 ));
             }
         };
-        __VALUE
+        __ENVPARSE_VALUE
     }};
 
-    ($var_name:literal as $num_ty:ident = $default:expr) => {{
-        const __VALUE: $num_ty = {
-            const __DEFAULT: $num_ty = $default;
-            match $crate::__internals::core::option_env!($var_name) {
-                $crate::__internals::core::option::Option::None => __DEFAULT,
-                $crate::__internals::core::option::Option::Some(s) if s.is_empty() => __DEFAULT,
-                $crate::__internals::core::option::Option::Some(s) => {
-                    match $crate::__internals::parse_dispatch::$num_ty(s.as_bytes()) {
-                        $crate::__internals::core::option::Option::Some(v) => v,
-                        $crate::__internals::core::option::Option::None => {
-                            $crate::__internals::core::panic!($crate::__internals::core::concat!(
+    ($var_name:literal as $typ:ident else $default:expr) => {{
+        const __ENVPARSE_VALUE: $typ = {
+            const __ENVPARSE_DEFAULT: $typ = $default;
+            match $crate::__priv::core::option_env!($var_name) {
+                $crate::__priv::None => __ENVPARSE_DEFAULT,
+                $crate::__priv::Some(s) => {
+                    match $crate::__priv::parse_dispatch::$typ(
+                        s.as_bytes(),
+                        $crate::__priv::Some(__ENVPARSE_DEFAULT),
+                    ) {
+                        $crate::__priv::Some(v) => v,
+                        $crate::__priv::None => {
+                            $crate::__priv::core::panic!($crate::__priv::core::concat!(
                                 "error: the value in ",
-                                $crate::__internals::core::stringify!($s),
+                                $crate::__priv::core::stringify!($s),
                                 " doesn't parse as a number, or is out of range for `",
-                                $crate::__internals::core::stringify!($num_ty),
+                                $crate::__priv::core::stringify!($typ),
                                 "`."
                             ));
                         }
@@ -236,27 +274,23 @@ macro_rules! parse_env {
                 }
             }
         };
-        __VALUE
+        __ENVPARSE_VALUE
     }};
 
-    (try $var_name:literal as $num_ty:ident) => {{
-        const __OPTION: $crate::__internals::core::option::Option<$num_ty> = {
-            match $crate::__internals::core::option_env!($var_name) {
-                $crate::__internals::core::option::Option::None => {
-                    $crate::__internals::core::option::Option::None
-                }
-                $crate::__internals::core::option::Option::Some(s) if s.is_empty() => {
-                    $crate::__internals::core::option::Option::None
-                }
-                $crate::__internals::core::option::Option::Some(s) => {
-                    match $crate::__internals::parse_dispatch::$num_ty(s.as_bytes()) {
-                        $crate::__internals::core::option::Option::Some(v) => v,
-                        $crate::__internals::core::option::Option::None => {
-                            $crate::__internals::core::panic!($crate::__internals::core::concat!(
+    (try $var_name:literal as $typ:ident) => {{
+        const __OPTION: $crate::__priv::Option<$typ> = {
+            match $crate::__priv::core::option_env!($var_name) {
+                $crate::__priv::None => $crate::__priv::None,
+                $crate::__priv::Some(s) if s.is_empty() => $crate::__priv::None,
+                $crate::__priv::Some(s) => {
+                    match $crate::__priv::parse_dispatch::$typ(s.as_bytes(), $crate::__priv::None) {
+                        $crate::__priv::Some(v) => v,
+                        $crate::__priv::None => {
+                            $crate::__priv::core::panic!($crate::__priv::core::concat!(
                                 "error: the value in ",
-                                $crate::__internals::core::stringify!($s),
+                                $crate::__priv::core::stringify!($s),
                                 " doesn't parse as a number, or is out of range for `",
-                                $crate::__internals::core::stringify!($num_ty),
+                                $crate::__priv::core::stringify!($typ),
                                 "`."
                             ));
                         }
@@ -267,16 +301,3 @@ macro_rules! parse_env {
         __OPTION
     }};
 }
-
-// pub trait ParseFromEnv {
-//     type Result;
-//     const PARSER: for<'a> fn(&'a [u8]) -> Option<Self::Result>;
-// }
-
-// impl ParseFromEnv for PhantomData<usize> {
-//     type Result = usize;
-//     const PARSER: for<'a> fn(&'a [u8]) -> Option<Self::Result> =
-//         crate::__internals::parse_dispatch::usize;
-// }
-
-// const MAX_LEN: usize = crate::parse_env!("MUST_BE_USER_PROVIDED" as usize);
