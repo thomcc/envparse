@@ -5,30 +5,46 @@
 //!
 //! [`env!`](macro@env) and [`option_env!`](macro@option_env) macros are useful
 //! for allowing certain forms of compile-time customization for libraries and
-//! programs, however they're unfortunately limited -- they always produce a
-//! `&str` or `Option<&str>` as a result.
+//! programs, however they're unfortunately limited: they always produce a
+//! `&str` or `Option<&str>` as a result. This works so long as you need a
+//! string, and not something like a number.
 //!
 //! In many cases, it's desirable to allow something like an array size to be
-//! configured in this manner, but unfortunately the Rust stdlib's parsing
-//! functionality does not support this, as .
+//! configured at compile time. This pattern is fairly common in C and C++ code,
+//! where it's handled by allowing the user to tune these values for their use,
+//! possibly by providing something like `-DFOOBAR_SIZE=32`[^1] via an
+//! environment variable like `CFLAGS`.
 //!
-//! This pattern is fairly common in C and C++ code, where it's
-//! handled by allowing the user to tune these values for their use, possibly by
-//! providing something like `-DFOOBAR_SIZE=32`[^1] via an environment variable
-//! like `CFLAGS`.
+//! Unfortunately, parsing a `&str` into a
 //!
 //! [^1]: Or `/D` with MSVC — you get the idea.
 //!
-//! # Supported types
+//! # Supported types (and syntax)
 //!
-//! Currently, the following types are supported:
-//! - Primitive integers: `i8`, `u8`, `i16`, `u16`, `i32`, `u32, `i64`, `u64`,
-//!   `i128`, `u128`, `isize` and `usize`. The syntax attempts to match the
-//!   syntax accepted for Rust integer literals. Concretely:
-//!     - `
-//!     - Hexadecimal `0x1234_abcd` is suppo
-//! - Booleans,
+//! Currently, the following types are supported.
 //!
+//! ## Primitive integers
+//!
+//! The primitive integer types are all supported: `i8`, `u8`, `i16`, `u16`,
+//! `i32`, `u32, `i64`, `u64`, `i128`, `u128`, `isize` and `usize`.
+//!
+//! The syntax accepted is a superset of the Rust lexical syntax for numbers:
+//!
+//! - Optional sign, either
+//!
+//!
+//! - Hexadecimal `0x1234_abcd` is suppo
+//!
+//! - Booleans, where we're fairly flexible in what we accept, in order to be
+//!   compatible with common methods for configuring programs via the
+//!   environment.
+//!
+//!     - The following (case-insensitive) strings are parsed as false: `0`,
+//!       `false`, `f`, `off`, `no`, and `n`.
+//!     - The following (case-insensitive) strings are parsed as false: `1`,
+//!       `true`, `t`, `on`, `yes`, and `y`.
+//!
+//! -
 //!
 //! # Usage
 //!
@@ -46,7 +62,7 @@
 //! code, it can be beneficial to handle the missing value. This can be done in
 //! two ways.
 //!
-//! First, a default value can beprovide
+//! First, a default value can be provide
 //!
 //! ```
 //! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
@@ -56,11 +72,7 @@
 //! }
 //! ```
 //!
-//! Here's one that deliberately fails
-//!
-//!
-//!
-//! This is essentially
+//! Here's one that deliberately fails, his is essentially
 //!
 //! No proc macros are used to perform this operation, and this crate has no
 //! dependencies aside from libcore.
@@ -97,47 +109,53 @@ pub mod __priv {
     // Export stuff we need from the macro.
     pub use core;
     pub use core::option::Option::{self, None, Some};
+
     pub mod parse_dispatch {
         use crate::parse::{parse_signed, parse_unsigned, ParseError::Empty};
 
         // unsigned
         pub const fn usize(s: &[u8], default: Option<usize>) -> Option<usize> {
-            match parse_unsigned(s, None, Some(usize::MAX as u128)) {
+            match parse_unsigned(s, None, Some(usize::MAX as u128), false) {
                 Ok(v) => Some(v as usize),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn u8(s: &[u8], default: Option<u8>) -> Option<u8> {
-            match parse_unsigned(s, None, Some(u8::MAX as u128)) {
+            match parse_unsigned(s, None, Some(u8::MAX as u128), false) {
                 Ok(v) => Some(v as u8),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn u16(s: &[u8], default: Option<u16>) -> Option<u16> {
-            match parse_unsigned(s, None, Some(u16::MAX as u128)) {
+            match parse_unsigned(s, None, Some(u16::MAX as u128), false) {
                 Ok(v) => Some(v as u16),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn u32(s: &[u8], default: Option<u32>) -> Option<u32> {
-            match parse_unsigned(s, None, Some(u32::MAX as u128)) {
+            match parse_unsigned(s, None, Some(u32::MAX as u128), false) {
                 Ok(v) => Some(v as u32),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn u64(s: &[u8], default: Option<u64>) -> Option<u64> {
-            match parse_unsigned(s, None, Some(u64::MAX as u128)) {
+            match parse_unsigned(s, None, Some(u64::MAX as u128), false) {
                 Ok(v) => Some(v as u64),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn u128(s: &[u8], default: Option<u128>) -> Option<u128> {
-            match parse_unsigned(s, None, None) {
+            match parse_unsigned(s, None, None, false) {
                 Ok(v) => Some(v),
                 Err(Empty) => default,
                 _ => None,
@@ -146,47 +164,53 @@ pub mod __priv {
 
         // signed
         pub const fn isize(s: &[u8], default: Option<isize>) -> Option<isize> {
-            match parse_signed(s, Some(isize::MIN as i128), Some(isize::MAX as i128)) {
+            match parse_signed(s, Some(isize::MIN as i128), Some(isize::MAX as i128), false) {
                 Ok(v) => Some(v as isize),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn i8(s: &[u8], default: Option<i8>) -> Option<i8> {
-            match parse_signed(s, Some(i8::MIN as i128), Some(i8::MAX as i128)) {
+            match parse_signed(s, Some(i8::MIN as i128), Some(i8::MAX as i128), false) {
                 Ok(v) => Some(v as i8),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn i16(s: &[u8], default: Option<i16>) -> Option<i16> {
-            match parse_signed(s, Some(i16::MIN as i128), Some(i16::MAX as i128)) {
+            match parse_signed(s, Some(i16::MIN as i128), Some(i16::MAX as i128), false) {
                 Ok(v) => Some(v as i16),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn i32(s: &[u8], default: Option<i32>) -> Option<i32> {
-            match parse_signed(s, Some(i32::MIN as i128), Some(i32::MAX as i128)) {
+            match parse_signed(s, Some(i32::MIN as i128), Some(i32::MAX as i128), false) {
                 Ok(v) => Some(v as i32),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn i64(s: &[u8], default: Option<i64>) -> Option<i64> {
-            match parse_signed(s, Some(i64::MIN as i128), Some(i64::MAX as i128)) {
+            match parse_signed(s, Some(i64::MIN as i128), Some(i64::MAX as i128), false) {
                 Ok(v) => Some(v as i64),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         pub const fn i128(s: &[u8], default: Option<i128>) -> Option<i128> {
-            match parse_signed(s, None, None) {
+            match parse_signed(s, None, None, false) {
                 Ok(v) => Some(v),
                 Err(Empty) => default,
                 _ => None,
             }
         }
+
         // Other things
         pub const fn bool(s: &[u8], default: Option<bool>) -> Option<bool> {
             match crate::parse::parse_bool(s) {
@@ -195,10 +219,6 @@ pub mod __priv {
                 _ => None,
             }
         }
-        //
-        // pub const fn char(s: &[u8]) -> Option<char> {
-        //     crate::parse::parse_char(s)
-        // }
     }
 }
 
