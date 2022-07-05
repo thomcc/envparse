@@ -79,11 +79,7 @@ pub(crate) const fn number_parse(s: &[u8], skip_sign: bool) -> Result<(u128, boo
             },
         }
     }
-    if ever_saw_digits {
-        Ok((accum, neg))
-    } else {
-        Err(ParseError::NoDigits)
-    }
+    if ever_saw_digits { Ok((accum, neg)) } else { Err(ParseError::NoDigits) }
 }
 
 const fn trim_ws(s: &[u8]) -> Option<(usize, usize)> {
@@ -102,90 +98,44 @@ const fn trim_ws(s: &[u8]) -> Option<(usize, usize)> {
         end -= 1;
     }
     end += 1;
-    if end <= start {
-        None
-    } else {
-        Some((start, end))
-    }
+    if end <= start { None } else { Some((start, end)) }
 }
 
-pub(crate) const fn parse_unsigned(
-    s: &[u8],
-    incl_min: Option<u128>,
-    incl_max: Option<u128>,
-    clamp: bool,
-) -> Result<u128, ParseError> {
-    let bmax_inc = match incl_max {
-        Some(v) => v,
-        None => u128::MAX,
-    };
-    let bmin_inc = match incl_min {
-        Some(v) => v,
-        None => u128::MIN,
-    };
+pub(crate) const fn parse_unsigned(s: &[u8], incl_min: u128, incl_max: u128, clamp: bool) -> Result<u128, ParseError> {
     let val = match number_parse(s, false) {
         Ok((n, _)) => n,
         Err(e) => match e {
-            ParseError::IntOverflow if clamp => bmax_inc,
-            ParseError::UnexpectedSign if clamp => bmin_inc,
+            ParseError::IntOverflow if clamp => incl_max,
+            ParseError::UnexpectedSign if clamp => incl_min,
             e => return Err(e),
         },
     };
-    if val < bmin_inc {
-        return if clamp {
-            Ok(bmin_inc)
-        } else {
-            Err(ParseError::OutOfRange)
-        };
+    if val < incl_min {
+        return if clamp { Ok(incl_min) } else { Err(ParseError::OutOfRange) };
     }
-    if val > bmax_inc {
-        return if clamp {
-            Ok(bmax_inc)
-        } else {
-            Err(ParseError::OutOfRange)
-        };
+    if val > incl_max {
+        return if clamp { Ok(incl_max) } else { Err(ParseError::OutOfRange) };
     }
     Ok(val)
 }
 
-pub(crate) const fn parse_signed(
-    s: &[u8],
-    incl_min: Option<i128>,
-    incl_max: Option<i128>,
-    clamp: bool,
-) -> Result<i128, ParseError> {
-    let bmax_inc = match incl_max {
-        Some(v) => v,
-        None => i128::MAX,
-    };
-    let bmin_inc = match incl_min {
-        Some(v) => v,
-        None => i128::MIN,
-    };
+pub(crate) const fn parse_signed(s: &[u8], incl_min: i128, incl_max: i128, clamp: bool) -> Result<i128, ParseError> {
     const I128_MIN_MAGNITUDE: u128 = (i128::MAX as u128) + 1;
     let val = match number_parse(s, true) {
         Ok((n, true)) if n == I128_MIN_MAGNITUDE => i128::MIN,
         Ok((n, true)) if n <= (i128::MAX as u128) => -(n as i128),
-        Ok((_, true)) if clamp => bmin_inc,
+        Ok((_, true)) if clamp => incl_min,
         Ok((n, false)) if n <= (i128::MAX as u128) => n as i128,
-        Ok((_, false)) if clamp => bmax_inc,
+        Ok((_, false)) if clamp => incl_max,
         Ok((_, _)) => return Err(ParseError::OutOfRange),
         // Err(ParseError::IntOverflow) =>
         Err(e) => return Err(e),
     };
-    if val < bmin_inc {
-        return if clamp {
-            Ok(bmin_inc)
-        } else {
-            Err(ParseError::OutOfRange)
-        };
+    if val < incl_min {
+        return if clamp { Ok(incl_min) } else { Err(ParseError::OutOfRange) };
     }
-    if val > bmax_inc {
-        return if clamp {
-            Ok(bmax_inc)
-        } else {
-            Err(ParseError::OutOfRange)
-        };
+    if val > incl_max {
+        return if clamp { Ok(incl_max) } else { Err(ParseError::OutOfRange) };
     }
     Ok(val)
 }
@@ -251,14 +201,7 @@ mod test {
         for i in 0..15 {
             for c in [" ", "\t", "\n", "\r"] {
                 let s = c.repeat(i);
-                assert_eq!(
-                    trim_ws(s.as_bytes()),
-                    None,
-                    "string of {} spaces (type = {:?}): {:?}",
-                    s.len(),
-                    c,
-                    s,
-                );
+                assert_eq!(trim_ws(s.as_bytes()), None, "string of {} spaces (type = {:?}): {:?}", s.len(), c, s,);
                 for c2 in [" ", "\t", "\n", "\r"] {
                     let cc = alloc::format!("{}{}", c, c2);
                     let s2 = cc.repeat(i);
@@ -278,19 +221,9 @@ mod test {
     #[test]
     fn test_trim() {
         fn check(s: &str, r: core::ops::Range<usize>) {
-            assert_eq!(
-                trim_ws(s.as_bytes()),
-                Some((r.start, r.end)),
-                "trim {:?}",
-                (s, r)
-            );
+            assert_eq!(trim_ws(s.as_bytes()), Some((r.start, r.end)), "trim {:?}", (s, r));
             let (sr, se) = trim_ws(s.as_bytes()).unwrap();
-            assert_eq!(
-                s.get(sr..se),
-                Some(s.trim()),
-                "trim smoke {:?}",
-                (s, r, sr..se),
-            );
+            assert_eq!(s.get(sr..se), Some(s.trim()), "trim smoke {:?}", (s, r, sr..se),);
         }
 
         for i in 1..10 {
@@ -328,12 +261,7 @@ mod test {
     fn test_parse_unsigned() {
         #[track_caller]
         fn check(s: &str, res: Result<u128, ParseError>) {
-            assert_eq!(
-                parse_unsigned(s.as_ref(), None, None, false),
-                res,
-                "input: {:?}",
-                (s, res),
-            );
+            assert_eq!(parse_unsigned(s.as_ref(), 0, u128::MAX, false), res, "input: {:?}", (s, res),);
         }
 
         #[track_caller]
@@ -408,15 +336,15 @@ mod test {
         ok("0o3777777777777777777777777777777777777777777", u128::MAX);
         ok("0xffffffffffffffffffffffffffffffff", u128::MAX);
         ok("0Xffffffffffffffffffffffffffffffff", u128::MAX);
-        ok("0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", u128::MAX);
+        ok(
+            "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            u128::MAX,
+        );
 
         ok("0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff", u128::MAX);
         ok("0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff___", u128::MAX);
 
-        ok(
-            "0x__f_f_f_f_ffff_ffff_ffff_ffff_ffff_ffff_ffff___",
-            u128::MAX,
-        );
+        ok("0x__f_f_f_f_ffff_ffff_ffff_ffff_ffff_ffff_ffff___", u128::MAX);
         err("", Empty);
         err("-30", UnexpectedSign);
         err("-", UnexpectedSign);
@@ -457,102 +385,49 @@ mod test {
         err("0xffffffffffffffffffffffffffffffff0", IntOverflow);
         err("0xf0fffffffffffffffffffffffffffffff0", IntOverflow);
 
-        assert_eq!(
-            parse_unsigned(b"200", Some(100), Some(1000), false),
-            Ok(200)
-        );
+        assert_eq!(parse_unsigned(b"200", 100, 1000, false), Ok(200));
+
+        assert_eq!(parse_unsigned(b"1000", 100, 1000, false), Ok(1000));
+        assert_eq!(parse_unsigned(b"100", 100, 1000, false), Ok(100));
+
+        assert_eq!(parse_unsigned(b"500", 600, 700, false), Err(OutOfRange),);
+
+        assert_eq!(parse_unsigned(b"500", 200, 300, false), Err(OutOfRange),);
+
+        assert_eq!(parse_unsigned(b"500", 600, 700, true), Ok(600));
+        assert_eq!(parse_unsigned(b"500", 200, 300, true), Ok(300));
+        assert_eq!(parse_unsigned(b"250", 200, 300, true), Ok(250));
+        assert_eq!(parse_unsigned(b"500", 200, u128::MAX, true), Ok(500));
+        assert_eq!(parse_unsigned(b"250", 0, 300, true), Ok(250));
+
+        assert_eq!(parse_unsigned(b"0", 0, 200, true), Ok(0));
+        assert_eq!(parse_unsigned(b"-1", 0, 200, true), Ok(0));
+        assert_eq!(parse_unsigned(b"0", 1, 255, true), Ok(1));
+        assert_eq!(parse_unsigned(b"-1", 1, 255, true), Ok(1));
+        assert_eq!(parse_unsigned(b"0", 0, u128::MAX, true), Ok(0));
+        assert_eq!(parse_unsigned(b"-1", 0, u128::MAX, true), Ok(0));
+
+        assert_eq!(parse_unsigned(b"-1", 0, u128::MAX, true), Ok(0));
+
+        assert_eq!(parse_unsigned(b"1000", 1, 255, false), Err(OutOfRange));
+        assert_eq!(parse_unsigned(b"1000", 1, 255, true), Ok(255));
 
         assert_eq!(
-            parse_unsigned(b"1000", Some(100), Some(1000), false),
-            Ok(1000)
-        );
-        assert_eq!(
-            parse_unsigned(b"100", Some(100), Some(1000), false),
-            Ok(100)
-        );
-
-        assert_eq!(
-            parse_unsigned(b"500", Some(600), Some(700), false),
-            Err(OutOfRange),
-        );
-
-        assert_eq!(
-            parse_unsigned(b"500", Some(200), Some(300), false),
-            Err(OutOfRange),
-        );
-
-        assert_eq!(parse_unsigned(b"500", Some(600), Some(700), true), Ok(600));
-        assert_eq!(parse_unsigned(b"500", Some(200), Some(300), true), Ok(300));
-        assert_eq!(parse_unsigned(b"250", Some(200), Some(300), true), Ok(250));
-        assert_eq!(parse_unsigned(b"500", Some(200), None, true), Ok(500));
-        assert_eq!(parse_unsigned(b"250", None, Some(300), true), Ok(250));
-
-        assert_eq!(parse_unsigned(b"0", None, Some(200), true), Ok(0));
-        assert_eq!(parse_unsigned(b"-1", None, Some(200), true), Ok(0));
-        assert_eq!(parse_unsigned(b"0", Some(1), Some(255), true), Ok(1));
-        assert_eq!(parse_unsigned(b"-1", Some(1), Some(255), true), Ok(1));
-        assert_eq!(parse_unsigned(b"0", None, None, true), Ok(0));
-        assert_eq!(parse_unsigned(b"-1", None, None, true), Ok(0));
-
-        assert_eq!(parse_unsigned(b"-1", None, None, true), Ok(0));
-
-        assert_eq!(
-            parse_unsigned(b"1000", Some(1), Some(255), false),
-            Err(OutOfRange)
-        );
-        assert_eq!(parse_unsigned(b"1000", Some(1), Some(255), true), Ok(255));
-
-        assert_eq!(
-            parse_unsigned(
-                b"0o4000000000000000000000000000000000000000000",
-                None,
-                None,
-                true,
-            ),
+            parse_unsigned(b"0o4000000000000000000000000000000000000000000", 0, u128::MAX, true,),
             Ok(u128::MAX),
         );
-        assert_eq!(
-            parse_unsigned(b"0xffffffffffffffffffffffffffffffff0", None, None, true),
-            Ok(u128::MAX),
-        );
-        assert_eq!(
-            parse_unsigned(b"0xf0fffffffffffffffffffffffffffffff0", None, None, true),
-            Ok(u128::MAX),
-        );
-        assert_eq!(
-            parse_unsigned(
-                b"0o4000000000000000000000000000000000000000000",
-                None,
-                Some(50),
-                true,
-            ),
-            Ok(50),
-        );
-        assert_eq!(
-            parse_unsigned(b"0xffffffffffffffffffffffffffffffff0", None, Some(50), true),
-            Ok(50),
-        );
-        assert_eq!(
-            parse_unsigned(
-                b"0xf0fffffffffffffffffffffffffffffff0",
-                None,
-                Some(50),
-                true,
-            ),
-            Ok(50),
-        );
+        assert_eq!(parse_unsigned(b"0xffffffffffffffffffffffffffffffff0", 0, u128::MAX, true), Ok(u128::MAX),);
+        assert_eq!(parse_unsigned(b"0xf0fffffffffffffffffffffffffffffff0", 0, u128::MAX, true), Ok(u128::MAX),);
+        assert_eq!(parse_unsigned(b"0o4000000000000000000000000000000000000000000", 0, 50, true,), Ok(50),);
+        assert_eq!(parse_unsigned(b"0xffffffffffffffffffffffffffffffff0", 0, 50, true), Ok(50),);
+        assert_eq!(parse_unsigned(b"0xf0fffffffffffffffffffffffffffffff0", 0, 50, true,), Ok(50),);
     }
 
     #[test]
     fn test_parse_signed() {
         #[track_caller]
         fn check(s: &str, res: Result<i128, ParseError>) {
-            assert_eq!(
-                parse_signed(s.as_ref(), None, None, false),
-                res,
-                "input: {:?}",
-                (s, res),
-            );
+            assert_eq!(parse_signed(s.as_ref(), i128::MIN, i128::MAX, false), res, "input: {:?}", (s, res),);
         }
 
         #[track_caller]
@@ -634,8 +509,14 @@ mod test {
         ok("0x7fffffffffffffffffffffffffffffff", i128::MAX);
         ok("-0x80000000000000000000000000000000", i128::MIN);
 
-        ok("0b1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", i128::MAX);
-        ok("-0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", i128::MIN);
+        ok(
+            "0b1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            i128::MAX,
+        );
+        ok(
+            "-0b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            i128::MIN,
+        );
 
         ok("0o1777777777777777777777777777777777777777777", i128::MAX);
         ok("-0o2000000000000000000000000000000000000000000", i128::MIN);
@@ -675,257 +556,100 @@ mod test {
 
         err("0o3777777777777777777777777777777777777777777", OutOfRange);
         err("0xffffffffffffffffffffffffffffffff", OutOfRange);
-        err("0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", OutOfRange);
+        err(
+            "0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            OutOfRange,
+        );
 
         err("170141183460469231731687303715884105728", OutOfRange);
         err("-170141183460469231731687303715884105729", OutOfRange);
 
-        assert_eq!(parse_signed(b"0", Some(-1000), Some(1000), false), Ok(0),);
-        assert_eq!(
-            parse_signed(b"1000", Some(-1000), Some(1000), false),
-            Ok(1000),
-        );
-        assert_eq!(
-            parse_signed(b"-1000", Some(-1000), Some(1000), false),
-            Ok(-1000),
-        );
-        assert_eq!(
-            parse_signed(b"1000", None, Some(999), false),
-            Err(OutOfRange),
-        );
-        assert_eq!(parse_signed(b"1000", Some(999), None, true), Ok(1000),);
-        assert_eq!(parse_signed(b"1000", None, Some(999), true), Ok(999),);
-        assert_eq!(
-            parse_signed(b"-1000", Some(-999), None, false),
-            Err(OutOfRange),
-        );
-        assert_eq!(parse_signed(b"-1000", Some(-999), None, true), Ok(-999),);
+        assert_eq!(parse_signed(b"0", -1000, 1000, false), Ok(0),);
+        assert_eq!(parse_signed(b"1000", -1000, 1000, false), Ok(1000),);
+        assert_eq!(parse_signed(b"-1000", -1000, 1000, false), Ok(-1000),);
+        assert_eq!(parse_signed(b"1000", i128::MIN, 999, false), Err(OutOfRange),);
+        assert_eq!(parse_signed(b"1000", 999, i128::MAX, true), Ok(1000),);
+        assert_eq!(parse_signed(b"1000", i128::MIN, 999, true), Ok(999),);
+        assert_eq!(parse_signed(b"-1000", -999, i128::MAX, false), Err(OutOfRange),);
+        assert_eq!(parse_signed(b"-1000", -999, i128::MAX, true), Ok(-999),);
+
+        assert_eq!(parse_signed(b"-1001", -1000, 1000, false), Err(OutOfRange),);
+        assert_eq!(parse_signed(b"1001", -1000, 1000, false), Err(OutOfRange),);
+        assert_eq!(parse_signed(b"-1001", -1000, 1000, true), Ok(-1000));
+        assert_eq!(parse_signed(b"1001", -1000, 1000, true), Ok(1000));
+        assert_eq!(parse_signed(b"1001", -1000, 1000, true), Ok(1000));
+
+        assert_eq!(parse_signed(b"500", 600, 700, true), Ok(600));
+        assert_eq!(parse_signed(b"500", 200, 300, true), Ok(300));
+        assert_eq!(parse_signed(b"500", 200, i128::MAX, true), Ok(500));
+
+        assert_eq!(parse_signed(b"250", 200, 300, true), Ok(250));
+        assert_eq!(parse_signed(b"500", 200, i128::MAX, true), Ok(500));
+        assert_eq!(parse_signed(b"250", i128::MIN, 300, true), Ok(250));
+
+        assert_eq!(parse_signed(b"150", -300, 200, true), Ok(150));
+        assert_eq!(parse_signed(b"-150", -300, 200, true), Ok(-150));
+        assert_eq!(parse_signed(b"300", -300, 200, true), Ok(200));
+        assert_eq!(parse_signed(b"-400", -300, 200, true), Ok(-300));
+
+        assert_eq!(parse_signed(b"-250", -300, -200, true), Ok(-250));
+        assert_eq!(parse_signed(b"-500", -200, i128::MAX, true), Ok(-200));
+        assert_eq!(parse_signed(b"-250", -300, i128::MAX, true), Ok(-250));
+
+        assert_eq!(parse_signed(b"0", i128::MIN, 200, true), Ok(0));
+        assert_eq!(parse_signed(b"-1", i128::MIN, 200, true), Ok(-1));
+        assert_eq!(parse_signed(b"0", 1, 255, true), Ok(1));
+        assert_eq!(parse_signed(b"-1", 1, 255, true), Ok(1));
+
+        assert_eq!(parse_signed(b"0", i128::MIN, i128::MAX, true), Ok(0));
+        assert_eq!(parse_signed(b"-1", i128::MIN, i128::MAX, true), Ok(-1));
+        assert_eq!(parse_signed(b"1", i128::MIN, i128::MAX, true), Ok(1));
+
+        assert_eq!(parse_signed(b"1000", 1, 255, false), Err(OutOfRange));
+        assert_eq!(parse_signed(b"-1000", 1, 255, false), Err(OutOfRange));
+        assert_eq!(parse_signed(b"-1000", -255, 255, false), Err(OutOfRange));
+
+        assert_eq!(parse_signed(b"1000", 1, 255, true), Ok(255));
+        assert_eq!(parse_signed(b"-1000", 1, 255, true), Ok(1));
+        assert_eq!(parse_signed(b"-1000", -255, 255, true), Ok(-255));
+
+        assert_eq!(parse_signed(b"1000", 1, 255, true), Ok(255));
+        assert_eq!(parse_signed(b"1000", -255, -1, true), Ok(-1));
+        assert_eq!(parse_signed(b"-1000", -255, -1, true), Ok(-255));
 
         assert_eq!(
-            parse_signed(b"-1001", Some(-1000), Some(1000), false),
-            Err(OutOfRange),
-        );
-        assert_eq!(
-            parse_signed(b"1001", Some(-1000), Some(1000), false),
-            Err(OutOfRange),
-        );
-        assert_eq!(
-            parse_signed(b"-1001", Some(-1000), Some(1000), true),
-            Ok(-1000)
-        );
-        assert_eq!(
-            parse_signed(b"1001", Some(-1000), Some(1000), true),
-            Ok(1000)
-        );
-        assert_eq!(
-            parse_signed(b"1001", Some(-1000), Some(1000), true),
-            Ok(1000)
-        );
-
-        assert_eq!(parse_signed(b"500", Some(600), Some(700), true), Ok(600));
-        assert_eq!(parse_signed(b"500", Some(200), Some(300), true), Ok(300));
-        assert_eq!(parse_signed(b"500", Some(200), None, true), Ok(500));
-
-        assert_eq!(parse_signed(b"250", Some(200), Some(300), true), Ok(250));
-        assert_eq!(parse_signed(b"500", Some(200), None, true), Ok(500));
-        assert_eq!(parse_signed(b"250", None, Some(300), true), Ok(250));
-
-        assert_eq!(parse_signed(b"150", Some(-300), Some(200), true), Ok(150));
-        assert_eq!(parse_signed(b"-150", Some(-300), Some(200), true), Ok(-150));
-        assert_eq!(parse_signed(b"300", Some(-300), Some(200), true), Ok(200));
-        assert_eq!(parse_signed(b"-400", Some(-300), Some(200), true), Ok(-300));
-
-        assert_eq!(
-            parse_signed(b"-250", Some(-300), Some(-200), true),
-            Ok(-250)
-        );
-        assert_eq!(parse_signed(b"-500", Some(-200), None, true), Ok(-200));
-        assert_eq!(parse_signed(b"-250", Some(-300), None, true), Ok(-250));
-
-        assert_eq!(parse_signed(b"0", None, Some(200), true), Ok(0));
-        assert_eq!(parse_signed(b"-1", None, Some(200), true), Ok(-1));
-        assert_eq!(parse_signed(b"0", Some(1), Some(255), true), Ok(1));
-        assert_eq!(parse_signed(b"-1", Some(1), Some(255), true), Ok(1));
-
-        assert_eq!(parse_signed(b"0", None, None, true), Ok(0));
-        assert_eq!(parse_signed(b"-1", None, None, true), Ok(-1));
-        assert_eq!(parse_signed(b"1", None, None, true), Ok(1));
-
-        assert_eq!(
-            parse_signed(b"1000", Some(1), Some(255), false),
-            Err(OutOfRange)
-        );
-        assert_eq!(
-            parse_signed(b"-1000", Some(1), Some(255), false),
-            Err(OutOfRange)
-        );
-        assert_eq!(
-            parse_signed(b"-1000", Some(-255), Some(255), false),
-            Err(OutOfRange)
-        );
-
-        assert_eq!(parse_signed(b"1000", Some(1), Some(255), true), Ok(255));
-        assert_eq!(parse_signed(b"-1000", Some(1), Some(255), true), Ok(1));
-        assert_eq!(
-            parse_signed(b"-1000", Some(-255), Some(255), true),
-            Ok(-255)
-        );
-
-        assert_eq!(parse_signed(b"1000", Some(1), Some(255), true), Ok(255));
-        assert_eq!(parse_signed(b"1000", Some(-255), Some(-1), true), Ok(-1));
-        assert_eq!(parse_signed(b"-1000", Some(-255), Some(-1), true), Ok(-255));
-
-        assert_eq!(
-            parse_signed(
-                b"0o3777777777777777777777777777777777777777777",
-                None,
-                None,
-                true
-            ),
+            parse_signed(b"0o3777777777777777777777777777777777777777777", i128::MIN, i128::MAX, true),
             Ok(i128::MAX)
         );
-        assert_eq!(
-            parse_signed(
-                b"0o3777777777777777777777777777777777777777777",
-                None,
-                Some(30),
-                true
-            ),
-            Ok(30)
-        );
-        assert_eq!(
-            parse_signed(
-                b"0o3777777777777777777777777777777777777777777",
-                None,
-                Some(-30),
-                true
-            ),
-            Ok(-30)
-        );
+        assert_eq!(parse_signed(b"0o3777777777777777777777777777777777777777777", i128::MIN, 30, true), Ok(30));
+        assert_eq!(parse_signed(b"0o3777777777777777777777777777777777777777777", i128::MIN, -30, true), Ok(-30));
+
+        assert_eq!(parse_signed(b"0xffffffffffffffffffffffffffffffff", i128::MIN, i128::MAX, true), Ok(i128::MAX));
+        assert_eq!(parse_signed(b"0xffffffffffffffffffffffffffffffff", i128::MIN, 30, true), Ok(30));
+        assert_eq!(parse_signed(b"0xffffffffffffffffffffffffffffffff", i128::MIN, -30, true), Ok(-30));
+
+        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", i128::MIN, i128::MAX, true), Ok(i128::MAX));
+        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", i128::MIN, 30, true), Ok(30));
+        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", i128::MIN, -30, true), Ok(-30));
+
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", i128::MIN, i128::MAX, true), Ok(i128::MAX));
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", i128::MIN, 30, true), Ok(30));
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", i128::MIN, -30, true), Ok(-30));
+
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", 10, i128::MAX, true), Ok(i128::MAX));
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", 10, 30, true), Ok(30));
+        assert_eq!(parse_signed(b"170141183460469231731687303715884105728", -30, 10, true), Ok(10));
 
         assert_eq!(
-            parse_signed(b"0xffffffffffffffffffffffffffffffff", None, None, true),
-            Ok(i128::MAX)
-        );
-        assert_eq!(
-            parse_signed(b"0xffffffffffffffffffffffffffffffff", None, Some(30), true),
-            Ok(30)
-        );
-        assert_eq!(
-            parse_signed(b"0xffffffffffffffffffffffffffffffff", None, Some(-30), true),
-            Ok(-30)
-        );
-
-        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", None, None, true), Ok(i128::MAX));
-        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", None, Some(30), true), Ok(30));
-        assert_eq!(parse_signed(b"0b11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111", None, Some(-30), true), Ok(-30));
-
-        assert_eq!(
-            parse_signed(b"170141183460469231731687303715884105728", None, None, true),
-            Ok(i128::MAX)
-        );
-        assert_eq!(
-            parse_signed(
-                b"170141183460469231731687303715884105728",
-                None,
-                Some(30),
-                true
-            ),
-            Ok(30)
-        );
-        assert_eq!(
-            parse_signed(
-                b"170141183460469231731687303715884105728",
-                None,
-                Some(-30),
-                true
-            ),
-            Ok(-30)
-        );
-
-        assert_eq!(
-            parse_signed(
-                b"170141183460469231731687303715884105728",
-                Some(10),
-                None,
-                true
-            ),
-            Ok(i128::MAX)
-        );
-        assert_eq!(
-            parse_signed(
-                b"170141183460469231731687303715884105728",
-                Some(10),
-                Some(30),
-                true
-            ),
-            Ok(30)
-        );
-        assert_eq!(
-            parse_signed(
-                b"170141183460469231731687303715884105728",
-                Some(-30),
-                Some(10),
-                true
-            ),
-            Ok(10)
-        );
-
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                None,
-                None,
-                true
-            ),
+            parse_signed(b"-170141183460469231731687303715884105729", i128::MIN, i128::MAX, true),
             Ok(i128::MIN)
         );
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                None,
-                Some(30),
-                true
-            ),
-            Ok(i128::MIN)
-        );
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                None,
-                Some(-30),
-                true
-            ),
-            Ok(i128::MIN)
-        );
+        assert_eq!(parse_signed(b"-170141183460469231731687303715884105729", i128::MIN, 30, true), Ok(i128::MIN));
+        assert_eq!(parse_signed(b"-170141183460469231731687303715884105729", i128::MIN, -30, true), Ok(i128::MIN));
 
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                None,
-                Some(10),
-                true
-            ),
-            Ok(i128::MIN)
-        );
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                Some(30),
-                None,
-                true
-            ),
-            Ok(30)
-        );
-        assert_eq!(
-            parse_signed(
-                b"-170141183460469231731687303715884105729",
-                Some(-30),
-                None,
-                true
-            ),
-            Ok(-30)
-        );
+        assert_eq!(parse_signed(b"-170141183460469231731687303715884105729", i128::MIN, 10, true), Ok(i128::MIN));
+        assert_eq!(parse_signed(b"-170141183460469231731687303715884105729", 30, i128::MAX, true), Ok(30));
+        assert_eq!(parse_signed(b"-170141183460469231731687303715884105729", -30, i128::MAX, true), Ok(-30));
     }
 
     #[test]

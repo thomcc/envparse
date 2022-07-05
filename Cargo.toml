@@ -2,6 +2,9 @@
 name = "envparse"
 version = "0.1.0"
 edition = "2021"
+authors = ["Thom Chiovoloni <thom@shift.click>"]
+readme = "README.md"
+description = "Parse compile-time environment variables into `const`s"
 
 [features]
 const_panic = []
