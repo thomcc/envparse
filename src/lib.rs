@@ -1,27 +1,6 @@
 //! A crate which allows parsing environment variables defined at compile time
 //! into constants.
 //!
-//! ```
-//! // parse `MYCRATE_MAX_THING_LEN` from the environment, defaulting to 4 if not provided.
-//! const MAX_THING_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize = 4);
-//! struct Thing {
-//!     len: [u8; MAX_THING_LEN],
-//! }
-//! ```
-//!
-//! Or:
-//! ```ignore
-//! use envparse::parse_env;
-//! // parse `MYCRATE_MAX_THING_LEN` from the environment, defaulting to 4 if not provided.
-//! const MAX_THING_BITS: usize = parse_env!(
-//!     "MYCRATE_MAX_THING_LEN" as usize,
-//!     options(default = 5, min = 2, max = 30, clamp),
-//! );
-//! struct Thing {
-//!     len: [u8; MAX_LEN],
-//! }
-//! ```
-//!
 //! # Motivation
 //!
 //! [`env!`](macro@env) and [`option_env!`](macro@option_env) macros are useful
@@ -40,40 +19,24 @@
 //! parsed at compile time, either in a proc macro, or a `const fn`. Both of
 //! these have downsides: proc macros are extremely slow to compile, and
 //!
-//! Unfortunately, `const fn` is very limited in Rust.
+//! Unfortunately, `const fn` is very limited in Rust, so parsing this is a
+//! pain. That's what this library is for.
 //!
 //! [^1]: Or `/D` with MSVC — you get the idea.
 //!
-//! # Supported types (and syntax)
+//! ```
+//! use envparse::parse_env;
+//! // parse `MYCRATE_MAX_THING_LEN` from the environment,
+//! // defaulting to 4 if not provided.
+//! const MAX_THING_LEN: usize = parse_env!("MYCRATE_MAX_THING_LEN" as usize else 4);
+//! struct Thing {
+//!     len: [u8; MAX_THING_LEN],
+//! }
+//! ```
 //!
-//! Currently, the following types are supported:
+//! ## Examples
 //!
-//! ## Primitive integers
-//!
-//! The primitive integer types are all supported: `i8`, `u8`, `i16`, `u16`,
-//! `i32`, `u32, `i64`, `u64`, `i128`, `u128`, `isize` and `usize`.
-//!
-//! The syntax accepted is a superset of the Rust lexical syntax for numbers:
-//!
-//! - Optional sign, either
-//!
-//!
-//! - Hexadecimal `0x1234_abcd` is suppo
-//!
-//! - Booleans, where we're fairly flexible in what we accept, in order to be
-//!   compatible with common methods for configuring programs via the
-//!   environment.
-//!
-//!     - The following (case-insensitive) strings are parsed as false: `0`,
-//!       `false`, `f`, `off`, `no`, and `n`.
-//!     - The following (case-insensitive) strings are parsed as false: `1`,
-//!       `true`, `t`, `on`, `yes`, and `y`.
-//!
-//! -
-//!
-//! # Usage
-//!
-//! Parsing a number from a required environment variable.
+//! Parsing an array length from a required environment variable.
 //!
 //! ```compile_fail
 //! const MAX_LEN: usize = envparse::parse_env!("MUST_BE_USER_PROVIDED" as usize);
@@ -87,7 +50,7 @@
 //! code, it can be beneficial to handle the missing value. This can be done in
 //! two ways.
 //!
-//! First, a default value can be provide
+//! First, a default value can be provided:
 //!
 //! ```
 //! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
@@ -97,32 +60,83 @@
 //! }
 //! ```
 //!
-//! Here's one that deliberately fails, his is essentially
+//! First, a default value can be provided:
 //!
+//! ```
+//! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
+//!
+//! struct Thing {
+//!     len: [u8; MAX_LEN],
+//! }
+//! ```
 //! No proc macros are used to perform this operation, and this crate has no
 //! dependencies aside from libcore.
 //!
-
-// - hexadecimal integers roughly match the pattern `[-+]?0[xX][a-fA-F0-9_]+`,
-//   with the exception that `0x___` is not supported (you need at least one
-//   digit).
-//
-// - binary and octal integers are similar, but (with `0b` as the prefix and
-//   `[01]` as the set of allowed digits), as well as octal (with `0o` as a
-//   prefix, and `[0-7]` as the digits). As an extension, decimal may also be
-//   explicitly specified, with a prefix of `0d`. All of these are case
-//   insensitive, so `0D99`/`0B11`/`0XFF`/`0O77` are all valid numbers.
-//
-// - If a prefix is not provided on the number, decimal is assumed as a default.
-//   There is no way to override this default in the macro, but perhaps it could
-//   be added in the future.
-//
-// - When parsing a signed integer, a `-` may be present before the number to
-//   negate it. A leading `+` may be present for signed or unsigned numbers,
-//
-// - Currently, whitespace is not allowed in the value. In the future we may
-//   relax this to allow leading and trailing whitespace, and possibly
-//   whitespace
+//! # Supported types
+//!
+//! Currently, the following types are supported:
+//!
+//! ## Primitive integers
+//!
+//! The primitive integer types are all supported: `i8`, `u8`, `i16`, `u16`,
+//! `i32`, `u32, `i64`, `u64`, `i128`, `u128`, `isize` and `usize`.
+//!
+//! These mostly follow a (slight superset of) Rust's syntax, with the exception
+//! that a trailing type indicator is not allowed.
+//!
+//! ## Booleans
+//!
+//! Booleans are supported, following some mostly ad-hoc conventions described
+//! by the table. As with integers, the parsing is not case-sensitive and
+//! ignores leading and trailing whitespace
+//!
+//! Note that the empty string is not considered a valid bool, so `FOOBAR=""`
+//! neither works to enable or disable something.
+//!
+//! | `bool` value | accepted strings (case-insensitive, trimmed) |
+//! | :--          | :--                                          |
+//! | `false`      | `0`, `false`, `f`, `off`, `no` or `n`        |
+//! | `true`       | `1`, `true`, `t`, `on`, `yes` or `y`         |
+//!
+//! # Syntax
+//!
+//! ## Integers
+//!
+//! Integers are parsed as follows with a couple notes:
+//!
+//! 1. Whitespace is ignored at the start or end of the input.
+//! 2. Input is not case-sensitive. `0XABC` is equivalent to `0xabc`.
+//! 3. `+` is allowed as a sign prefix, unlike in Rust's syntax.
+//! 4. Unsigned integers reject a leading `-` sign early, but for the most part
+//!    bounds/ranges are not checked until after parsing.
+//!
+//! ```txt
+//! integer: ('+' | '-')? (dec_int | oct_int | bin_int | hex_int)
+//!
+//! dec_int: digit_dec (digit_dec | '_')*
+//! hex_int: '0x' (digit_hex | '_')* digit_hex (digit_hex | '_')*
+//! oct_int: '0o' (digit_oct | '_')* digit_oct (digit_oct | '_')*
+//! bin_int: '0b' (digit_bin | '_')* digit_bin (digit_bin | '_')*
+//! digit_bin: [0-1]
+//! digit_oct: [0-7]
+//! digit_dec: [0-9]
+//! digit_hex: [0-9a-fA-F]
+//! ```
+//!
+//! ## Booleans
+//!
+//! This is entirely case-insensitive, and any whitespace is trimmed from either
+//! end.
+//!
+//! We're fairly forgiving here (perhaps more-so than we should be), in order to
+//! be compatible with some other ways of configuration (rustc's command line
+//! arguments, for example).
+//!
+//! ```txt
+//! boolean: (true_str | false_str)
+//! false_str: ( '0' | 'false' | 'f' | 'off' | 'no'  | 'n' )
+//! true_str:  ( '1' | 'true'  | 't' | 'on'  | 'yes' | 'y' )
+//! ```
 
 #![no_std]
 
