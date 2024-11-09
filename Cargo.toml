@@ -9,4 +9,5 @@ description = "Parse compile-time environment variables into `const`s"
 [features]
 const_panic = []
 
-[dependencies]
+[dev-dependencies]
+compiletest_rs = "0.10"
