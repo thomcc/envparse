@@ -1,12 +1,13 @@
-// Figure out if there's a good way to use these errors. Now they're mostly for
-// testing.
-//
-// Note that since *most* of what we parse are numbers, these errors are
-// generally geared towards that (it doesn't really make sense to have a
-// dedicated enum for bool parsing errors).
+//! The raw parsers, provided for convenience, since perhaps you need a to use a
+//! const-compatible integer (or boolean, I suppose) parser for something other
+//! than environment variables.
+
+/// Indicates failure to parse something. Because the parsers are generally
+/// parsing integers numbers, that's what these errors focus on. See
+/// [`parse_unsigned`] and [`parse_signed`] for more information.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum ParseError {
+pub enum ParseError {
     /// Empty or whitespace-only string.
     Empty,
 
@@ -22,7 +23,8 @@ pub(crate) enum ParseError {
     /// Hit integer overflow when computing.
     IntOverflow,
 
-    /// Got a valid number but it doesn't fit in the range of the type.
+    /// Got a valid number but it doesn't fit in the range of the type (and
+    /// `clamp` wasn't specified as true).
     OutOfRange,
 
     /// Got something that doesn't seem to indicate a boolean.
@@ -101,7 +103,15 @@ const fn trim_ws(s: &[u8]) -> Option<(usize, usize)> {
     if end <= start { None } else { Some((start, end)) }
 }
 
-pub(crate) const fn parse_unsigned(s: &[u8], incl_min: u128, incl_max: u128, clamp: bool) -> Result<u128, ParseError> {
+/// Parse a `u128` from a byte slice in const.
+///
+/// Case-insensitive, ignores leading and trailing whitespace, supports internal
+/// underscores and prefixed non-base-ten numbers (e.g. `"0xffff_ffff"` and
+/// `"0b1111_0011"` will both parse as you would hope).
+///
+/// See [Syntax](mod@super#syntax) for more info on what strings this function
+/// accepts.
+pub const fn parse_unsigned(s: &[u8], incl_min: u128, incl_max: u128, clamp: bool) -> Result<u128, ParseError> {
     let val = match number_parse(s, false) {
         Ok((n, _)) => n,
         Err(e) => match e {
@@ -119,7 +129,11 @@ pub(crate) const fn parse_unsigned(s: &[u8], incl_min: u128, incl_max: u128, cla
     Ok(val)
 }
 
-pub(crate) const fn parse_signed(s: &[u8], incl_min: i128, incl_max: i128, clamp: bool) -> Result<i128, ParseError> {
+/// Like [`parse_unsigned`] but for signed numbers, returning a `i128`.
+///
+/// See [Syntax](mod@super#syntax) for information on what strings this
+/// function accepts.
+pub const fn parse_signed(s: &[u8], incl_min: i128, incl_max: i128, clamp: bool) -> Result<i128, ParseError> {
     const I128_MIN_MAGNITUDE: u128 = (i128::MAX as u128) + 1;
     let val = match number_parse(s, true) {
         Ok((n, true)) if n == I128_MIN_MAGNITUDE => i128::MIN,
@@ -140,7 +154,15 @@ pub(crate) const fn parse_signed(s: &[u8], incl_min: i128, incl_max: i128, clamp
     Ok(val)
 }
 
-pub(crate) const fn parse_bool(s: &[u8]) -> Result<bool, ParseError> {
+/// Parses a boolean from a byte slice.
+///
+/// Case-insensitive, ignores leading and trailing whitespace, and accepts
+/// `"0"`, `"f"`, `"n"`, `"no"`, `"off"`, and `"false"` for `false`, and `"1"`,
+/// `"t"`, `"y"`, `"on"`, `"yes"`, and `"true"` for `true`.
+///
+/// See [Syntax](mod@super#syntax) for information on what strings this
+/// function accepts.
+pub const fn parse_bool(s: &[u8]) -> Result<bool, ParseError> {
     let (i, e) = match trim_ws(s) {
         Some(tup) => tup,
         None => return Err(ParseError::Empty),

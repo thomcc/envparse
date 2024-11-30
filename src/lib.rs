@@ -1,5 +1,8 @@
 //! A crate which allows parsing environment variables defined at compile time
-//! into constants.
+//! into constants using `const fn` (rather than proc macros).
+//!
+//! See [`parse_env`](macro@parse_env) for the main entry point into the
+//! library.
 //!
 //! # Motivation
 //!
@@ -33,44 +36,6 @@
 //!     len: [u8; MAX_THING_LEN],
 //! }
 //! ```
-//!
-//! ## Examples
-//!
-//! Parsing an array length from a required environment variable.
-//!
-//! ```compile_fail
-//! const MAX_LEN: usize = envparse::parse_env!("MUST_BE_USER_PROVIDED" as usize);
-//! struct Thing {
-//!     len: [u8; MAX_LEN],
-//! }
-//! ```
-//!
-//! That was a "`compile_fail`"" example because `MUST_BE_USER_PROVIDED` will
-//! (hopefully) not be defined in the environment when running rustdoc. In real
-//! code, it can be beneficial to handle the missing value. This can be done in
-//! two ways.
-//!
-//! First, a default value can be provided:
-//!
-//! ```
-//! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
-//!
-//! struct Thing {
-//!     len: [u8; MAX_LEN],
-//! }
-//! ```
-//!
-//! First, a default value can be provided:
-//!
-//! ```
-//! const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 32);
-//!
-//! struct Thing {
-//!     len: [u8; MAX_LEN],
-//! }
-//! ```
-//! No proc macros are used to perform this operation, and this crate has no
-//! dependencies aside from libcore.
 //!
 //! # Supported types
 //!
@@ -137,10 +102,7 @@
 //! false_str: ( '0' | 'false' | 'f' | 'off' | 'no'  | 'n' )
 //! true_str:  ( '1' | 'true'  | 't' | 'on'  | 'yes' | 'y' )
 //! ```
-
 #![no_std]
-
-mod parse;
 
 /// Not part of the public API. Please do not use.
 mod privat;
@@ -151,14 +113,15 @@ pub mod __priv {
     pub use core;
     pub use core::option::Option::{self, None, Some};
 
-    // pub use crate::privat::parse_bounded;
-    pub use crate::privat::parsers;
+    pub use crate::privat::{RangeWrap, parse_bounded, parsers};
 }
 
+/// Parse an environment variable into some value. The main entry-point of this
+/// library.
+///
 /// Here's an example
 /// ```
-/// use envparse::parse_env;
-/// const MAX_LEN: usize = parse_env!("MYCRATE_MAX_THING_LEN" as usize else 64);
+/// const MAX_LEN: usize = envparse::parse_env!("MYCRATE_MAX_THING_LEN" as usize else 64);
 /// struct Thing {
 ///     len: [u8; MAX_LEN],
 /// }
@@ -172,33 +135,51 @@ pub mod __priv {
 ///     len: [u8; MAX_LEN],
 /// }
 /// ```
+///
+/// You can bound by ranges too. This one will fail because the
+/// `MUST_BE_USER_PROVIDED` var isn't provided.
+///
+/// ```compile_fail
+/// const MAX_LEN_LOG2: u32 = envparse::parse_env!("MUST_BE_USER_PROVIDED" as u32 in 1..32);
+/// const MAX_LEN: usize = 1 << MAX_LEN_LOG2;
+/// struct Thing {
+///     len: [u8; MAX_LEN],
+/// }
+/// ```
+///
+/// If it's optional and you want an `Option` out of it, you can use `try`:
+///
+/// ```
+/// const MAX_LEN: usize = match envparse::parse_env!(try "OPTIONAL_MAX_LEN_LOG2" as u32 in 1..32) {
+///     Some(v) => 1 << v,
+///     None => 0x80,
+/// };
+/// struct Thing {
+///     len: [u8; MAX_LEN],
+/// }
+/// ```
 #[macro_export]
 macro_rules! parse_env {
-    // note that identifiers at item scope (like `const`s) don't have hygene, so
-    // we pick a name for this intermediate constant that's unlikely to collide
-    // with identifiers in the user's program (even if they're wrapping our
-    // macro in another macro, they shouldn't use the `__ENVPARSE_` prefix. And
-    // if they do, I don't care about breaking them).
     ($var_name:literal as $typ:ident) => {{
-        const __ENVPARSE_VALUE: $typ =
+        const {
             match $crate::__priv::parsers::$typ($crate::__priv::core::env!($var_name).as_bytes(), $crate::__priv::None)
             {
                 $crate::__priv::Some(v) => v,
                 $crate::__priv::None => {
                     $crate::__priv::core::panic!($crate::__priv::core::concat!(
-                        "error: the value in ",
+                        "error: the value in `",
                         $crate::__priv::core::stringify!($s),
-                        " doesn't parse as a number, or is out of range for `",
+                        "` doesn't parse as a `",
                         $crate::__priv::core::stringify!($typ),
-                        "`.",
+                        "`, or is out of range.",
                     ));
                 }
-            };
-        __ENVPARSE_VALUE
+            }
+        }
     }};
 
     ($var_name:literal as $typ:ident else $default:expr) => {{
-        const __ENVPARSE_VALUE: $typ = {
+        const {
             const __ENVPARSE_DEFAULT: $typ = $default;
             match $crate::__priv::core::option_env!($var_name) {
                 $crate::__priv::None => __ENVPARSE_DEFAULT,
@@ -207,39 +188,138 @@ macro_rules! parse_env {
                         $crate::__priv::Some(v) => v,
                         $crate::__priv::None => {
                             $crate::__priv::core::panic!($crate::__priv::core::concat!(
+                                "error: the value in `",
+                                $crate::__priv::core::stringify!($s),
+                                "` doesn't parse as a `",
+                                $crate::__priv::core::stringify!($typ),
+                                "`, or is out of range.",
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }};
+
+    ($var_name:literal as $typ:ident in $range:expr) => {{
+        const {
+            match $crate::__priv::parse_bounded::$typ(
+                $crate::__priv::core::env!($var_name).as_bytes(),
+                $crate::__priv::None,
+                $crate::__priv::Some(
+                    $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>).start(),
+                ),
+                $crate::__priv::Some(
+                    $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>).end_incl(),
+                ),
+                false, // clamp
+            ) {
+                $crate::__priv::Some(v) => v,
+                $crate::__priv::None => {
+                    $crate::__priv::core::panic!($crate::__priv::core::concat!(
+                        "error: the value in ",
+                        $crate::__priv::core::stringify!($s),
+                        " doesn't parse as a `",
+                        $crate::__priv::core::stringify!($typ),
+                        "`, or is outside of the range `",
+                        $crate::__priv::core::stringify!($range),
+                        "`."
+                    ));
+                }
+            }
+        }
+    }};
+
+    ($var_name:literal as $typ:ident (in $range:expr) else $default:expr) => {{
+        const {
+            const __ENVPARSE_DEFAULT: $typ = $default;
+            match $crate::__priv::core::option_env!($var_name) {
+                $crate::__priv::None => __ENVPARSE_DEFAULT,
+                $crate::__priv::Some(s) => {
+                    match $crate::__priv::parse_bounded::$typ(
+                        s.as_bytes(),
+                        $crate::__priv::Some(__ENVPARSE_DEFAULT),
+                        $crate::__priv::Some(
+                            $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>)
+                                .start(),
+                        ),
+                        $crate::__priv::Some(
+                            $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>)
+                                .end_incl(),
+                        ),
+                        false, // clamp
+                    ) {
+                        $crate::__priv::Some(v) => v,
+                        $crate::__priv::None => {
+                            $crate::__priv::core::panic!($crate::__priv::core::concat!(
                                 "error: the value in ",
                                 $crate::__priv::core::stringify!($s),
-                                " doesn't parse as a number, or is out of range for `",
+                                " doesn't parse as a `",
                                 $crate::__priv::core::stringify!($typ),
+                                "`, or is outside of the range`",
+                                $crate::__priv::core::stringify!($range),
                                 "`."
                             ));
                         }
                     }
                 }
             }
-        };
-        __ENVPARSE_VALUE
+        }
     }};
 
     (try $var_name:literal as $typ:ident) => {{
-        const __OPTION: $crate::__priv::Option<$typ> = {
+        const {
             match $crate::__priv::core::option_env!($var_name) {
                 $crate::__priv::None => $crate::__priv::None,
                 $crate::__priv::Some(s) if s.is_empty() => $crate::__priv::None,
                 $crate::__priv::Some(s) => match $crate::__priv::parsers::$typ(s.as_bytes(), $crate::__priv::None) {
-                    $crate::__priv::Some(v) => v,
                     $crate::__priv::None => {
                         $crate::__priv::core::panic!($crate::__priv::core::concat!(
                             "error: the value in ",
                             $crate::__priv::core::stringify!($s),
-                            " doesn't parse as a number, or is out of range for `",
+                            " doesn't parse as a `",
                             $crate::__priv::core::stringify!($typ),
-                            "`."
+                            "`, or is out of range.",
                         ));
                     }
+                    opt => opt,
                 },
             }
-        };
-        __OPTION
+        }
+    }};
+
+    (try $var_name:literal as $typ:ident in $range:expr) => {{
+        const {
+            match ::core::option_env!($var_name) {
+                $crate::__priv::None => $crate::__priv::None,
+                $crate::__priv::Some(s) if s.is_empty() => $crate::__priv::None,
+                $crate::__priv::Some(s) => match $crate::__priv::parse_bounded::$typ(
+                    s.as_bytes(),
+                    $crate::__priv::None,
+                    $crate::__priv::Some(
+                        $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>).start(),
+                    ),
+                    $crate::__priv::Some(
+                        $crate::__priv::RangeWrap($range, $crate::__priv::core::marker::PhantomData::<$typ>).end_incl(),
+                    ),
+                    false, // clamp
+                ) {
+                    $crate::__priv::None => {
+                        ::core::panic!(::core::concat!(
+                            "error: the value in ",
+                            ::core::stringify!($s),
+                            " doesn't parse as a `",
+                            ::core::stringify!($typ),
+                            "`, or is outside of the range `",
+                            ::core::stringify!($range),
+                            "`.",
+                        ));
+                    }
+                    opt => opt,
+                },
+            }
+        }
     }};
 }
+
+pub mod parse;

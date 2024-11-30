@@ -12,8 +12,8 @@ macro_rules! unwrap_or {
     };
 }
 
-mod parse_bounded {
-    use crate::parse::{parse_signed, parse_unsigned, ParseError::Empty};
+pub mod parse_bounded {
+    use crate::parse::{ParseError::Empty, parse_signed, parse_unsigned};
 
     // unsigned
     pub const fn usize(
@@ -190,3 +190,72 @@ pub mod parsers {
         }
     }
 }
+
+#[derive(Copy, Clone)]
+pub struct RangeWrap<R, T>(pub R, pub core::marker::PhantomData<T>);
+
+macro_rules! def_to_inclusive {
+    ($t:ident, $min:expr) => {
+        impl RangeWrap<core::ops::Range<$t>, $t> {
+            pub const fn start(&self) -> $t {
+                self.0.start
+            }
+            pub const fn end_incl(&self) -> $t {
+                self.0.end - 1
+            }
+        }
+        impl RangeWrap<core::ops::RangeFrom<$t>, $t> {
+            pub const fn start(&self) -> $t {
+                self.0.start
+            }
+            pub const fn end_incl(&self) -> $t {
+                $t::MAX
+            }
+        }
+        impl RangeWrap<core::ops::RangeTo<$t>, $t> {
+            pub const fn start(&self) -> $t {
+                $min
+            }
+            pub const fn end_incl(&self) -> $t {
+                self.0.end - 1
+            }
+        }
+        impl RangeWrap<core::ops::RangeInclusive<$t>, $t> {
+            pub const fn start(&self) -> $t {
+                *self.0.start()
+            }
+            pub const fn end_incl(&self) -> $t {
+                *self.0.end()
+            }
+        }
+        impl RangeWrap<core::ops::RangeToInclusive<$t>, $t> {
+            pub const fn start(&self) -> $t {
+                $min
+            }
+            pub const fn end_incl(&self) -> $t {
+                self.0.end
+            }
+        }
+        impl RangeWrap<core::ops::RangeFull, $t> {
+            pub const fn start(&self) -> $t {
+                $min
+            }
+            pub const fn end_incl(&self) -> $t {
+                $t::MAX
+            }
+        }
+    };
+}
+
+def_to_inclusive!(u8, 0);
+def_to_inclusive!(u16, 0);
+def_to_inclusive!(u32, 0);
+def_to_inclusive!(u64, 0);
+def_to_inclusive!(u128, 0);
+def_to_inclusive!(usize, 0);
+def_to_inclusive!(i8, i8::MIN);
+def_to_inclusive!(i16, i16::MIN);
+def_to_inclusive!(i32, i32::MIN);
+def_to_inclusive!(i64, i64::MIN);
+def_to_inclusive!(i128, i128::MIN);
+def_to_inclusive!(isize, isize::MIN);
