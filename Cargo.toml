@@ -2,10 +2,14 @@
 name = "envparse"
 version = "0.1.0"
 edition = "2021"
-authors = ["Thom Chiovoloni <thom@shift.click>"]
 readme = "README.md"
 description = "Parse compile-time environment variables into `const`s"
 rust-version = "1.82.0"
+license = "Unlicense OR MIT OR Apache-2.0"
+homepage = "https://github.com/thomcc/envparse"
+repository = "https://github.com/thomcc/envparse"
+keywords = ["env", "environment", "variable", "parse", "define"]
+categories = ["config", "development-tools::build-utils"]
 
 [dev-dependencies]
 compiletest_rs = "0.11.1"
