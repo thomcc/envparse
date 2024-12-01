@@ -1,6 +1,6 @@
 [package]
 name = "envparse"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 authors = ["Thom Chiovoloni <thom@shift.click>"]
 readme = "README.md"

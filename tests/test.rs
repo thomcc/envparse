@@ -1,4 +1,4 @@
-use compiletest_rs::{Config, common::Mode, run_tests};
+use compiletest_rs::{common::Mode, run_tests, Config};
 
 fn run_mode(mode: &'static str) {
     let root = std::env::var_os("CARGO_MANIFEST_DIR")
