@@ -13,7 +13,7 @@ macro_rules! unwrap_or {
 }
 
 pub mod parse_bounded {
-    use crate::parse::{ParseError::Empty, parse_signed, parse_unsigned};
+    use crate::parse::{parse_signed, parse_unsigned, ParseError::Empty};
 
     // unsigned
     pub const fn usize(

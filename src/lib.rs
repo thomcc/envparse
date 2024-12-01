@@ -113,7 +113,7 @@ pub mod __priv {
     pub use core;
     pub use core::option::Option::{self, None, Some};
 
-    pub use crate::privat::{RangeWrap, parse_bounded, parsers};
+    pub use crate::privat::{parse_bounded, parsers, RangeWrap};
 }
 
 /// Parse an environment variable into some value. The main entry-point of this

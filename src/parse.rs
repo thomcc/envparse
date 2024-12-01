@@ -81,7 +81,11 @@ pub(crate) const fn number_parse(s: &[u8], skip_sign: bool) -> Result<(u128, boo
             },
         }
     }
-    if ever_saw_digits { Ok((accum, neg)) } else { Err(ParseError::NoDigits) }
+    if ever_saw_digits {
+        Ok((accum, neg))
+    } else {
+        Err(ParseError::NoDigits)
+    }
 }
 
 const fn trim_ws(s: &[u8]) -> Option<(usize, usize)> {
@@ -100,7 +104,11 @@ const fn trim_ws(s: &[u8]) -> Option<(usize, usize)> {
         end -= 1;
     }
     end += 1;
-    if end <= start { None } else { Some((start, end)) }
+    if end <= start {
+        None
+    } else {
+        Some((start, end))
+    }
 }
 
 /// Parse a `u128` from a byte slice in const.
